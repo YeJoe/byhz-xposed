@@ -6,11 +6,12 @@ import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.net.Uri;
+import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.method.ScrollingMovementMethod;
 import android.view.Gravity;
@@ -25,7 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 实时显示 V2TXLivePlayerImpl.startLivePlay 的 hook 结果，支持复制和播放。
+ * 实时显示 V2TXLivePlayerImpl.startLivePlay 的 hook 结果，支持长按选中复制和播放。
  */
 public class MainActivity extends Activity {
 
@@ -35,6 +36,15 @@ public class MainActivity extends Activity {
     private int recordCount = 0;
     private final List<String> urlList = new ArrayList<>();
     private final List<String> labelList = new ArrayList<>();
+
+    private final int BG_DARK = 0xFF0D1117;
+    private final int BG_CARD = 0xFF161B22;
+    private final int ACCENT = 0xFF58A6FF;
+    private final int ACCENT_GREEN = 0xFF3FB950;
+    private final int ACCENT_RED = 0xFFDA3633;
+    private final int TEXT_PRIMARY = 0xFFE6EDF3;
+    private final int TEXT_SECONDARY = 0xFF8B949E;
+    private final int BORDER = 0xFF30363D;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
@@ -54,7 +64,6 @@ public class MainActivity extends Activity {
             resultText.setText(allResults.toString().trim());
             statusText.setText("已捕获 " + recordCount + " 条记录");
 
-            // 自动滚动到底部
             resultText.post(() -> {
                 int lineCount = resultText.getLineCount();
                 if (resultText.getLayout() != null && lineCount > 0) {
@@ -70,7 +79,6 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(createLayout());
 
-        // 注册广播接收器
         registerReceiver(receiver,
                 new IntentFilter(MainHook.BROADCAST_ACTION),
                 RECEIVER_EXPORTED);
@@ -82,49 +90,117 @@ public class MainActivity extends Activity {
         try { unregisterReceiver(receiver); } catch (Exception ignored) {}
     }
 
+    // ---- 圆角背景工具 ----
+
+    private GradientDrawable roundedBg(int color, float radius, int borderColor) {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.RECTANGLE);
+        d.setCornerRadius(dp(radius));
+        d.setColor(color);
+        if (borderColor != 0) {
+            d.setStroke(dp(1), borderColor);
+        }
+        return d;
+    }
+
+    private void styleBtn(Button btn, int bgColor, String text) {
+        btn.setText(text);
+        btn.setTextColor(0xFFFFFFFF);
+        btn.setTextSize(14);
+        btn.setTypeface(null, Typeface.BOLD);
+        btn.setBackground(roundedBg(bgColor, 8, 0));
+        btn.setPadding(dp(20), dp(10), dp(20), dp(10));
+        btn.setAllCaps(false);
+        btn.setGravity(Gravity.CENTER);
+        btn.setStateListAnimator(null);
+
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(40));
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        lp.weight = 1;
+        btn.setLayoutParams(lp);
+    }
+
+    private int dp(float dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    // ---- 布局 ----
+
     private View createLayout() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(32, 32, 32, 32);
-        root.setBackgroundColor(0xFF1E1E1E);
+        root.setPadding(dp(16), dp(24), dp(16), dp(24));
+        root.setBackgroundColor(BG_DARK);
+
+        // 标题栏
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, 0, 0, dp(8));
+
+        TextView dot = new TextView(this);
+        dot.setText("● ");
+        dot.setTextColor(ACCENT_GREEN);
+        dot.setTextSize(20);
+        header.addView(dot);
 
         TextView title = new TextView(this);
-        title.setText("V2TXLive Hook 结果");
-        title.setTextColor(0xFF00E676);
+        title.setText("LiveURL 抓取");
+        title.setTextColor(TEXT_PRIMARY);
         title.setTextSize(22);
         title.setTypeface(null, Typeface.BOLD);
-        title.setPadding(0, 16, 0, 16);
-        root.addView(title);
+        header.addView(title);
 
+        root.addView(header);
+
+        // 分割线
+        View divider1 = new View(this);
+        divider1.setBackgroundColor(BORDER);
+        divider1.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)));
+        root.addView(divider1);
+
+        // 状态栏
         statusText = new TextView(this);
-        statusText.setText("等待 hook 触发...\n打开目标 App 并触发 startLivePlay");
-        statusText.setTextColor(0xFF888888);
+        statusText.setText("等待 hook 触发...\n打开目标 App 并进入直播间");
+        statusText.setTextColor(TEXT_SECONDARY);
         statusText.setTextSize(13);
-        statusText.setPadding(0, 0, 0, 12);
+        statusText.setPadding(0, dp(12), 0, dp(12));
         root.addView(statusText);
 
-        resultText = new TextView(this);
-        resultText.setTextColor(0xFFFFFFFF);
-        resultText.setTextSize(13);
-        resultText.setTypeface(Typeface.MONOSPACE);
-        resultText.setBackgroundColor(0xFF2D2D2D);
-        resultText.setPadding(24, 24, 24, 24);
-        resultText.setMovementMethod(new ScrollingMovementMethod());
-        resultText.setText("暂无数据");
-        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+        // 结果卡片容器
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(roundedBg(BG_CARD, 12, BORDER));
+        card.setPadding(dp(16), dp(16), dp(16), dp(16));
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-        rlp.setMargins(0, 0, 0, 24);
-        resultText.setLayoutParams(rlp);
-        root.addView(resultText);
+        clp.setMargins(0, 0, 0, dp(16));
+        card.setLayoutParams(clp);
 
+        resultText = new TextView(this);
+        resultText.setTextColor(TEXT_PRIMARY);
+        resultText.setTextSize(12);
+        resultText.setTypeface(Typeface.MONOSPACE);
+        resultText.setPadding(0, dp(4), 0, dp(4));
+        resultText.setMovementMethod(new ScrollingMovementMethod());
+        resultText.setTextIsSelectable(true);        // 关键：允许长按选中复制
+        resultText.setHighlightColor(0x3358A6FF);    // 选中高亮色
+        resultText.setText("暂无数据");
+        resultText.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        card.addView(resultText);
+
+        root.addView(card);
+
+        // 按钮栏
         LinearLayout btnRow = new LinearLayout(this);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);
         btnRow.setGravity(Gravity.CENTER);
 
         Button copyBtn = new Button(this);
-        copyBtn.setText("复制全部");
-        copyBtn.setTextColor(0xFFFFFFFF);
-        copyBtn.setBackgroundColor(0xFF1565C0);
+        styleBtn(copyBtn, ACCENT, "复制全部");
         copyBtn.setOnClickListener(v -> {
             String data = allResults.toString().trim();
             if (data.isEmpty()) {
@@ -137,14 +213,8 @@ public class MainActivity extends Activity {
         });
         btnRow.addView(copyBtn);
 
-        View spacer1 = new View(this);
-        spacer1.setLayoutParams(new LinearLayout.LayoutParams(16, 0));
-        btnRow.addView(spacer1);
-
         Button playBtn = new Button(this);
-        playBtn.setText("播放");
-        playBtn.setTextColor(0xFFFFFFFF);
-        playBtn.setBackgroundColor(0xFF2E7D32);
+        styleBtn(playBtn, ACCENT_GREEN, "播放");
         playBtn.setOnClickListener(v -> {
             if (urlList.isEmpty()) {
                 Toast.makeText(this, "暂无 URL", Toast.LENGTH_SHORT).show();
@@ -166,14 +236,8 @@ public class MainActivity extends Activity {
         });
         btnRow.addView(playBtn);
 
-        View spacer2 = new View(this);
-        spacer2.setLayoutParams(new LinearLayout.LayoutParams(16, 0));
-        btnRow.addView(spacer2);
-
         Button clearBtn = new Button(this);
-        clearBtn.setText("清空");
-        clearBtn.setTextColor(0xFFFFFFFF);
-        clearBtn.setBackgroundColor(0xFFC62828);
+        styleBtn(clearBtn, ACCENT_RED, "清空");
         clearBtn.setOnClickListener(v -> {
             allResults.setLength(0);
             urlList.clear();
@@ -185,6 +249,7 @@ public class MainActivity extends Activity {
         btnRow.addView(clearBtn);
 
         root.addView(btnRow);
+
         return root;
     }
 }

@@ -5,7 +5,9 @@ import android.content.Intent;
 import android.util.Log;
 
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Locale;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
@@ -16,7 +18,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /**
  * Xposed 模块入口。
- * 不对包名做任何过滤 — 由 LSPosed 管理器控制注入范围。
+ * 代码层包名过滤 + LSPosed 管理器注入范围双重控制。
  * <p>
  * Hook V2TXLivePlayerImpl.startLivePlay 抓取参数和返回值。
  */
@@ -24,11 +26,20 @@ public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "LiveURLHook";
 
+    /** 目标 App 包名集合 */
+    private static final HashSet<String> TARGET_PACKAGES = new HashSet<>(Arrays.asList(
+            "com.l95c2450d7.f68bb4e2d5",
+            "com.jhtycjujslsz.kpkprhqkgmwcpwbkt",
+            "top.bienvenido.saas.i18n"
+    ));
+
     /** 广播 Action — 与 MainActivity 中的 receiver 一致 */
     static final String BROADCAST_ACTION = "com.byhz.xposed.LIVE_RESULT";
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpp) throws Throwable {
+        if (!TARGET_PACKAGES.contains(lpp.packageName)) return;
+
         log("=== Injected: " + lpp.packageName + " ===");
         hookV2TXLive(lpp.classLoader);
     }
