@@ -22,7 +22,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public class MainHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "BYHZ_Xposed";
-    private static final String NEW_TOKEN = "bearer eb8fbd7caca26d2b8147e59340b78d60";
+    private static final String NEW_TOKEN = "Bearer eb8fbd7caca26d2b8147e59340b78d60";
 
     // ---- 目标 App 包名（根据实际情况修改）----
     private static final String[] TARGET_PACKAGES = {
@@ -74,17 +74,17 @@ public class MainHook implements IXposedHookLoadPackage {
                         protected void beforeHookedMethod(MethodHookParam param) {
                             try {
                                 Object builder = param.thisObject;
-                                // 反射拿 url 字段（HttpUrl 类型，toString() 得到完整 URL）
                                 Object urlObj = XposedHelpers.getObjectField(builder, "url");
                                 if (urlObj == null) return;
                                 String url = urlObj.toString();
 
+                                // 诊断日志：打印所有经过 OkHttp 的请求
+                                log("[OkHttp-URL] " + url);
+
                                 if (isTargetUrl(url)) {
-                                    log("[OkHttp] " + url);
-                                    // 调用 builder.header("Authorization", token) 覆盖/添加
-                                    XposedHelpers.callMethod(builder, "header",
-                                            "Authorization", NEW_TOKEN);
-                                    log("[OkHttp-Token] Replaced");
+                                    log("[OkHttp-MATCH] " + url);
+                                    setHeader(builder, "Authorization", NEW_TOKEN);
+                                    log("[OkHttp-Token] Replaced -> " + NEW_TOKEN);
                                 }
                             } catch (Throwable t) {
                                 log("[OkHttp-Err] " + t.getMessage());
@@ -96,6 +96,26 @@ public class MainHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             log("[OkHttp] Not found: " + t.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * 防混淆设置 header — 直接操作 Headers.Builder 内部字段
+     */
+    private void setHeader(Object requestBuilder, String name, String value) {
+        try {
+            // 优先用 builder.header() 方法
+            XposedHelpers.callMethod(requestBuilder, "header", name, value);
+        } catch (Throwable e1) {
+            // 方法被混淆则直接操作内部 Headers.Builder
+            try {
+                Object headersBuilder = XposedHelpers.getObjectField(requestBuilder, "headers");
+                if (headersBuilder != null) {
+                    XposedHelpers.callMethod(headersBuilder, "set", name, value);
+                }
+            } catch (Throwable e2) {
+                log("[OkHttp-Err] header() & set() both failed: " + e2.getMessage());
+            }
         }
     }
 
