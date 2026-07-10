@@ -11,10 +11,21 @@
             android:value="true" />
         <meta-data
             android:name="xposeddescription"
-            android:value="自动化替换 byhz 接口的 Authorization Token" />
+            android:value="V2TXLive startLivePlay URL 抓取" />
         <meta-data
             android:name="xposedminversion"
             android:value="82" />
+
+        <!-- UI 入口：显示 V2TXLive hook 结果 -->
+        <activity
+            android:name="com.byhz.xposed.MainActivity"
+            android:exported="true"
+            android:label="LiveURL 抓取">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
     </application>
 
