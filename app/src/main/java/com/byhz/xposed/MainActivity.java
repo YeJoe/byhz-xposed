@@ -1,12 +1,15 @@
 package com.byhz.xposed;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.net.Uri;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.text.method.ScrollingMovementMethod;
@@ -18,8 +21,11 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * 实时显示 V2TXLivePlayerImpl.startLivePlay 的 hook 结果，支持一键复制。
+ * 实时显示 V2TXLivePlayerImpl.startLivePlay 的 hook 结果，支持复制和播放。
  */
 public class MainActivity extends Activity {
 
@@ -27,6 +33,8 @@ public class MainActivity extends Activity {
     private TextView statusText;
     private final StringBuilder allResults = new StringBuilder();
     private int recordCount = 0;
+    private final List<String> urlList = new ArrayList<>();
+    private final List<String> labelList = new ArrayList<>();
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
@@ -34,6 +42,9 @@ public class MainActivity extends Activity {
             String time = intent.getStringExtra("time");
             String playUrl = intent.getStringExtra("playUrl");
             String returnValue = intent.getStringExtra("returnValue");
+
+            urlList.add(playUrl);
+            labelList.add("#" + (recordCount + 1) + "  " + time);
 
             allResults.append("── #").append(++recordCount).append(" ──\n")
                     .append("Time : ").append(time).append("\n")
@@ -126,9 +137,38 @@ public class MainActivity extends Activity {
         });
         btnRow.addView(copyBtn);
 
-        View spacer = new View(this);
-        spacer.setLayoutParams(new LinearLayout.LayoutParams(24, 0));
-        btnRow.addView(spacer);
+        View spacer1 = new View(this);
+        spacer1.setLayoutParams(new LinearLayout.LayoutParams(16, 0));
+        btnRow.addView(spacer1);
+
+        Button playBtn = new Button(this);
+        playBtn.setText("播放");
+        playBtn.setTextColor(0xFFFFFFFF);
+        playBtn.setBackgroundColor(0xFF2E7D32);
+        playBtn.setOnClickListener(v -> {
+            if (urlList.isEmpty()) {
+                Toast.makeText(this, "暂无 URL", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            String[] labels = labelList.toArray(new String[0]);
+            new AlertDialog.Builder(this)
+                    .setTitle("选择要播放的链接")
+                    .setItems(labels, (dialog, which) -> {
+                        try {
+                            Intent playIntent = new Intent(Intent.ACTION_VIEW);
+                            playIntent.setDataAndType(Uri.parse(urlList.get(which)), "video/*");
+                            startActivity(Intent.createChooser(playIntent, "选择播放器"));
+                        } catch (Exception e) {
+                            Toast.makeText(this, "无法播放: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .show();
+        });
+        btnRow.addView(playBtn);
+
+        View spacer2 = new View(this);
+        spacer2.setLayoutParams(new LinearLayout.LayoutParams(16, 0));
+        btnRow.addView(spacer2);
 
         Button clearBtn = new Button(this);
         clearBtn.setText("清空");
@@ -136,6 +176,8 @@ public class MainActivity extends Activity {
         clearBtn.setBackgroundColor(0xFFC62828);
         clearBtn.setOnClickListener(v -> {
             allResults.setLength(0);
+            urlList.clear();
+            labelList.clear();
             recordCount = 0;
             resultText.setText("暂无数据");
             statusText.setText("等待 hook 触发...");
