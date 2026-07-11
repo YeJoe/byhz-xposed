@@ -78,33 +78,70 @@ public class MainHook implements IXposedHookLoadPackage {
 
     // ==================== a0.b.F ====================
 
+    private static volatile boolean a0bHooked = false;
+
     private void hookA0b(ClassLoader cl) {
+        // 1) 沿父链找（常规/磁盘加载）
+        ClassLoader target = findClassLoader(cl, "a0.b");
+        if (target != null) {
+            try {
+                XposedHelpers.findAndHookMethod("a0.b", target, "F", String.class, a0bCallback());
+                a0bHooked = true;
+                log("[OK] a0.b.F hooked (直接, " + target + ")");
+            } catch (Throwable t) {
+                log("[A0b-Fail] " + t.getClass().getName() + ": " + t.getMessage());
+            }
+            return;
+        }
+        // 2) 内存/独立 ClassLoader 兜底：等它被加载时再 hook
         try {
-            XposedHelpers.findAndHookMethod(
-                    "a0.b",
-                    cl,
-                    "F",
-                    String.class,
-                    new XC_MethodHook() {
+            XposedHelpers.findAndHookMethod(ClassLoader.class, "loadClass",
+                    String.class, boolean.class, new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
+                            if (a0bHooked) return;
+                            if (!"a0.b".equals(param.args[0])) return;
+                            Class<?> c = (Class<?>) param.getResult();
+                            if (c == null) return;
                             try {
-                                String playUrl = (String) param.args[0];
-                                Object result = param.getResult();
-                                String resultStr = result == null ? "null" : result.toString();
-
-                                log("[A0b] url=" + playUrl + " ret=" + resultStr);
-                                sendResult(playUrl, resultStr, "a0.b.F");
+                                XposedBridge.hookAllMethods(c, "F", a0bCallback());
+                                a0bHooked = true;
+                                log("[OK] a0.b.F hooked (loadClass动态, " + c.getClassLoader() + ")");
                             } catch (Throwable t) {
-                                log("[A0b-Err] " + t.getMessage());
+                                log("[A0b-Dyn-Fail] " + t.getMessage());
                             }
                         }
-                    }
-            );
-            log("[OK] a0.b.F hooked (after)");
+                    });
+            log("[OK] a0.b loadClass 动态钩子已挂载");
         } catch (Throwable t) {
-            log("[A0b-Fail] " + t.getClass().getName() + ": " + t.getMessage());
+            log("[A0b] loadClass 钩子失败: " + t.getMessage());
         }
+    }
+
+    private ClassLoader findClassLoader(ClassLoader start, String name) {
+        ClassLoader cl = start;
+        while (cl != null) {
+            try { cl.loadClass(name); return cl; } catch (Throwable ignored) {}
+            cl = cl.getParent();
+        }
+        return null;
+    }
+
+    private XC_MethodHook a0bCallback() {
+        return new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(MethodHookParam param) {
+                try {
+                    String playUrl = (String) param.args[0];
+                    Object result = param.getResult();
+                    String resultStr = result == null ? "null" : result.toString();
+                    log("[A0b] url=" + playUrl + " ret=" + resultStr);
+                    sendResult(playUrl, resultStr, "a0.b.F");
+                } catch (Throwable t) {
+                    log("[A0b-Err] " + t.getMessage());
+                }
+            }
+        };
     }
 
     /** 通过广播将结果发给本模块的 Activity */
