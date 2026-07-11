@@ -1,41 +1,48 @@
 package com.byhz.xposed;
 
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
-import android.text.method.ScrollingMovementMethod;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.xmlpull.v1.XmlPullParser;
+import org.xmlpull.v1.XmlPullParserFactory;
+
+import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 实时显示 V2TXLivePlayerImpl.startLivePlay 的 hook 结果，支持长按选中复制和播放。
+ * 实时显示 hook 结果。每条记录以独立卡片展示，卡片右上角带复制 / 播放图标，
+ * 点击复制图标直接复制该条 URL，点击播放图标选择播放器播放该 URL；
+ * 卡片上同时标明是哪条 hook 产生的。
  */
 public class MainActivity extends Activity {
 
-    private TextView resultText;
+    private ScrollView scrollView;
+    private LinearLayout logContainer;
+    private TextView emptyHint;
     private TextView statusText;
-    private final StringBuilder allResults = new StringBuilder();
+
     private int recordCount = 0;
     private final List<String> urlList = new ArrayList<>();
-    private final List<String> labelList = new ArrayList<>();
 
     private final int BG_DARK = 0xFF0D1117;
     private final int BG_CARD = 0xFF161B22;
@@ -52,25 +59,13 @@ public class MainActivity extends Activity {
             String time = intent.getStringExtra("time");
             String playUrl = intent.getStringExtra("playUrl");
             String returnValue = intent.getStringExtra("returnValue");
+            String source = intent.getStringExtra("source");
 
+            recordCount++;
             urlList.add(playUrl);
-            labelList.add("#" + (recordCount + 1) + "  " + time);
 
-            allResults.append("── #").append(++recordCount).append(" ──\n")
-                    .append("Time : ").append(time).append("\n")
-                    .append("URL  : ").append(playUrl).append("\n")
-                    .append("Ret  : ").append(returnValue).append("\n\n");
-
-            resultText.setText(allResults.toString().trim());
+            addLogCard(time, playUrl, returnValue, source, recordCount);
             statusText.setText("已捕获 " + recordCount + " 条记录");
-
-            resultText.post(() -> {
-                int lineCount = resultText.getLineCount();
-                if (resultText.getLayout() != null && lineCount > 0) {
-                    int scrollY = resultText.getLayout().getLineTop(lineCount) - resultText.getHeight();
-                    if (scrollY > 0) resultText.scrollTo(0, scrollY);
-                }
-            });
         }
     };
 
@@ -103,26 +98,55 @@ public class MainActivity extends Activity {
         return d;
     }
 
-    private void styleBtn(Button btn, int bgColor, String text) {
-        btn.setText(text);
-        btn.setTextColor(0xFFFFFFFF);
-        btn.setTextSize(14);
-        btn.setTypeface(null, Typeface.BOLD);
-        btn.setBackground(roundedBg(bgColor, 8, 0));
-        btn.setPadding(dp(20), dp(10), dp(20), dp(10));
-        btn.setAllCaps(false);
-        btn.setGravity(Gravity.CENTER);
-        btn.setStateListAnimator(null);
-
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, dp(40));
-        lp.setMargins(dp(4), 0, dp(4), 0);
-        lp.weight = 1;
-        btn.setLayoutParams(lp);
-    }
-
     private int dp(float dp) {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    // ---- 图标（程序化生成 VectorDrawable）----
+
+    private Drawable vectorIcon(int color, String pathData) {
+        String hex = String.format("%08X", color);
+        String xml = "<vector xmlns:android=\"http://schemas.android.com/apk/res/android\" "
+                + "android:width=\"24dp\" android:height=\"24dp\" "
+                + "android:viewportWidth=\"24\" android:viewportHeight=\"24\">"
+                + "<path android:fillColor=\"#" + hex + "\" android:pathData=\"" + pathData + "\"/>"
+                + "</vector>";
+        try {
+            XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
+            factory.setNamespaceAware(true);
+            XmlPullParser parser = factory.newPullParser();
+            parser.setInput(new StringReader(xml));
+            return Drawable.createFromXml(getResources(), parser);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Drawable copyIcon() {
+        // 两张重叠的卡片，表示「复制」
+        return vectorIcon(ACCENT,
+                "M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11"
+                + "a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z");
+    }
+
+    private Drawable playIcon() {
+        // 播放三角
+        return vectorIcon(ACCENT_GREEN, "M8 5v14l11-7z");
+    }
+
+    private ImageView makeIcon(Drawable drawable, String desc, View.OnClickListener onClick) {
+        ImageView iv = new ImageView(this);
+        if (drawable != null) {
+            iv.setImageDrawable(drawable);
+        }
+        iv.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        iv.setPadding(dp(6), dp(6), dp(6), dp(6));
+        iv.setClickable(true);
+        iv.setFocusable(true);
+        iv.setContentDescription(desc);
+        iv.setBackground(roundedBg(0x22000000, 8, 0));
+        iv.setOnClickListener(onClick);
+        return iv;
     }
 
     // ---- 布局 ----
@@ -169,81 +193,55 @@ public class MainActivity extends Activity {
         statusText.setPadding(0, dp(12), 0, dp(12));
         root.addView(statusText);
 
-        // 结果卡片容器
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(roundedBg(BG_CARD, 12, BORDER));
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+        // 滚动容器 + 卡片列表
+        scrollView = new ScrollView(this);
+        scrollView.setFillViewport(true);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-        clp.setMargins(0, 0, 0, dp(16));
-        card.setLayoutParams(clp);
+        slp.setMargins(0, 0, 0, dp(16));
+        scrollView.setLayoutParams(slp);
 
-        resultText = new TextView(this);
-        resultText.setTextColor(TEXT_PRIMARY);
-        resultText.setTextSize(12);
-        resultText.setTypeface(Typeface.MONOSPACE);
-        resultText.setPadding(0, dp(4), 0, dp(4));
-        resultText.setMovementMethod(new ScrollingMovementMethod());
-        resultText.setTextIsSelectable(true);        // 关键：允许长按选中复制
-        resultText.setHighlightColor(0x3358A6FF);    // 选中高亮色
-        resultText.setText("暂无数据");
-        resultText.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        card.addView(resultText);
+        logContainer = new LinearLayout(this);
+        logContainer.setOrientation(LinearLayout.VERTICAL);
+        logContainer.setPadding(0, dp(4), 0, dp(4));
+        scrollView.addView(logContainer);
 
-        root.addView(card);
+        // 空状态提示
+        emptyHint = new TextView(this);
+        emptyHint.setText("暂无数据");
+        emptyHint.setTextColor(TEXT_SECONDARY);
+        emptyHint.setTextSize(13);
+        emptyHint.setGravity(Gravity.CENTER);
+        emptyHint.setPadding(0, dp(24), 0, dp(24));
+        logContainer.addView(emptyHint);
 
-        // 按钮栏
+        root.addView(scrollView);
+
+        // 仅保留「清空」按钮
         LinearLayout btnRow = new LinearLayout(this);
         btnRow.setOrientation(LinearLayout.HORIZONTAL);
         btnRow.setGravity(Gravity.CENTER);
 
-        Button copyBtn = new Button(this);
-        styleBtn(copyBtn, ACCENT, "复制全部");
-        copyBtn.setOnClickListener(v -> {
-            String data = allResults.toString().trim();
-            if (data.isEmpty()) {
-                Toast.makeText(this, "暂无数据", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(ClipData.newPlainText("live_url_hook", data));
-            Toast.makeText(this, "已复制 " + recordCount + " 条记录", Toast.LENGTH_SHORT).show();
-        });
-        btnRow.addView(copyBtn);
-
-        Button playBtn = new Button(this);
-        styleBtn(playBtn, ACCENT_GREEN, "播放");
-        playBtn.setOnClickListener(v -> {
-            if (urlList.isEmpty()) {
-                Toast.makeText(this, "暂无 URL", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            String[] labels = labelList.toArray(new String[0]);
-            new AlertDialog.Builder(this)
-                    .setTitle("选择要播放的链接")
-                    .setItems(labels, (dialog, which) -> {
-                        try {
-                            Intent playIntent = new Intent(Intent.ACTION_VIEW);
-                            playIntent.setDataAndType(Uri.parse(urlList.get(which)), "video/*");
-                            startActivity(Intent.createChooser(playIntent, "选择播放器"));
-                        } catch (Exception e) {
-                            Toast.makeText(this, "无法播放: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        }
-                    })
-                    .show();
-        });
-        btnRow.addView(playBtn);
-
         Button clearBtn = new Button(this);
-        styleBtn(clearBtn, ACCENT_RED, "清空");
+        clearBtn.setText("清空");
+        clearBtn.setTextColor(0xFFFFFFFF);
+        clearBtn.setTextSize(14);
+        clearBtn.setTypeface(null, Typeface.BOLD);
+        clearBtn.setBackground(roundedBg(ACCENT_RED, 8, 0));
+        clearBtn.setPadding(dp(20), dp(10), dp(20), dp(10));
+        clearBtn.setAllCaps(false);
+        clearBtn.setGravity(Gravity.CENTER);
+        clearBtn.setStateListAnimator(null);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(40));
+        clp.setMargins(dp(4), 0, dp(4), 0);
+        clearBtn.setLayoutParams(clp);
         clearBtn.setOnClickListener(v -> {
-            allResults.setLength(0);
             urlList.clear();
-            labelList.clear();
             recordCount = 0;
-            resultText.setText("暂无数据");
+            logContainer.removeAllViews();
+            logContainer.addView(emptyHint);
+            emptyHint.setVisibility(View.VISIBLE);
             statusText.setText("等待 hook 触发...");
         });
         btnRow.addView(clearBtn);
@@ -251,5 +249,96 @@ public class MainActivity extends Activity {
         root.addView(btnRow);
 
         return root;
+    }
+
+    // ---- 添加一条记录卡片 ----
+
+    private void addLogCard(String time, String playUrl, String ret, String source, int index) {
+        if (emptyHint.getParent() != null) {
+            logContainer.removeView(emptyHint);
+        }
+
+        final int pos = index - 1;
+
+        // 卡片
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(roundedBg(BG_CARD, 12, BORDER));
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        LinearLayout.LayoutParams cLP = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cLP.setMargins(0, 0, 0, dp(12));
+        card.setLayoutParams(cLP);
+
+        // 顶部行：标签 + 播放图标 + 复制图标
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView tag = new TextView(this);
+        String srcLabel = (source == null || source.isEmpty()) ? "" : "  ·  " + source;
+        tag.setText("#" + index + "  " + time + srcLabel);
+        tag.setTextColor(TEXT_SECONDARY);
+        tag.setTextSize(12);
+        top.addView(tag, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+
+        ImageView playIv = makeIcon(playIcon(), "播放", v -> playUrl(pos));
+        top.addView(playIv, new LinearLayout.LayoutParams(dp(36), dp(36)));
+
+        ImageView copyIv = makeIcon(copyIcon(), "复制 URL", v -> copyUrl(pos));
+        top.addView(copyIv, new LinearLayout.LayoutParams(dp(36), dp(36)));
+
+        card.addView(top);
+
+        // URL
+        TextView urlView = new TextView(this);
+        urlView.setText(playUrl);
+        urlView.setTextColor(TEXT_PRIMARY);
+        urlView.setTextSize(13);
+        urlView.setTypeface(Typeface.MONOSPACE);
+        urlView.setTextIsSelectable(true);
+        urlView.setHighlightColor(0x3358A6FF);
+        LinearLayout.LayoutParams urlLP = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        urlLP.setMargins(0, dp(8), 0, 0);
+        urlView.setLayoutParams(urlLP);
+        card.addView(urlView);
+
+        // 返回值
+        if (ret != null && !ret.isEmpty()) {
+            TextView retView = new TextView(this);
+            retView.setText("Ret: " + ret);
+            retView.setTextColor(TEXT_SECONDARY);
+            retView.setTextSize(11);
+            retView.setTypeface(Typeface.MONOSPACE);
+            LinearLayout.LayoutParams retLP = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            retLP.setMargins(0, dp(4), 0, 0);
+            retView.setLayoutParams(retLP);
+            card.addView(retView);
+        }
+
+        logContainer.addView(card);
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+    }
+
+    private void copyUrl(int index) {
+        if (index < 0 || index >= urlList.size()) return;
+        String url = urlList.get(index);
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText("live_url", url));
+        Toast.makeText(this, "已复制 URL", Toast.LENGTH_SHORT).show();
+    }
+
+    private void playUrl(int index) {
+        if (index < 0 || index >= urlList.size()) return;
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(Uri.parse(urlList.get(index)), "video/*");
+            startActivity(Intent.createChooser(intent, "选择播放器"));
+        } catch (Exception e) {
+            Toast.makeText(this, "无法播放: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 }

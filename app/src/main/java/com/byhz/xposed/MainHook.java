@@ -61,8 +61,8 @@ public class MainHook implements IXposedHookLoadPackage {
                                 Object result = param.getResult();
                                 String resultStr = result == null ? "null" : result.toString();
 
-                                log("[Live] url=" + playUrl + " ret=" + resultStr);
-                                sendResult(playUrl, resultStr);
+                                log("[V2TXLive] url=" + playUrl + " ret=" + resultStr);
+                                sendResult(playUrl, resultStr, "V2TXLive.startLivePlay");
                             } catch (Throwable t) {
                                 log("[Live-Err] " + t.getMessage());
                             }
@@ -76,7 +76,7 @@ public class MainHook implements IXposedHookLoadPackage {
     }
 
     /** 通过广播将结果发给本模块的 Activity */
-    private void sendResult(String playUrl, String returnValue) {
+    private void sendResult(String playUrl, String returnValue, String source) {
         try {
             Context ctx = (Context) XposedHelpers.callStaticMethod(
                     XposedHelpers.findClass("android.app.ActivityThread", null),
@@ -94,9 +94,10 @@ public class MainHook implements IXposedHookLoadPackage {
             intent.putExtra("time", time);
             intent.putExtra("playUrl", playUrl);
             intent.putExtra("returnValue", returnValue);
+            intent.putExtra("source", source == null ? "" : source);
             ctx.sendBroadcast(intent);
 
-            log("[Live] Broadcast sent");
+            log("[Live] Broadcast sent (" + source + ")");
         } catch (Throwable t) {
             log("[Live-Broadcast-Err] " + t.getMessage());
         }
