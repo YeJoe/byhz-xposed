@@ -42,6 +42,7 @@ public class MainHook implements IXposedHookLoadPackage {
 
         log("=== Injected: " + lpp.packageName + " ===");
         hookV2TXLive(lpp.classLoader);
+        hookA0b(lpp.classLoader);
     }
 
     // ==================== V2TXLivePlayerImpl.startLivePlay ====================
@@ -72,6 +73,37 @@ public class MainHook implements IXposedHookLoadPackage {
             log("[OK] V2TXLivePlayerImpl.startLivePlay hooked (after)");
         } catch (Throwable t) {
             log("[Live-Fail] " + t.getClass().getName() + ": " + t.getMessage());
+        }
+    }
+
+    // ==================== a0.b.F ====================
+
+    private void hookA0b(ClassLoader cl) {
+        try {
+            XposedHelpers.findAndHookMethod(
+                    "a0.b",
+                    cl,
+                    "F",
+                    String.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            try {
+                                String playUrl = (String) param.args[0];
+                                Object result = param.getResult();
+                                String resultStr = result == null ? "null" : result.toString();
+
+                                log("[A0b] url=" + playUrl + " ret=" + resultStr);
+                                sendResult(playUrl, resultStr, "a0.b.F");
+                            } catch (Throwable t) {
+                                log("[A0b-Err] " + t.getMessage());
+                            }
+                        }
+                    }
+            );
+            log("[OK] a0.b.F hooked (after)");
+        } catch (Throwable t) {
+            log("[A0b-Fail] " + t.getClass().getName() + ": " + t.getMessage());
         }
     }
 
