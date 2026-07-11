@@ -1,4 +1,4 @@
-package com.byhz.xposed;
+package com.liveurl.xposed;
 
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -8,17 +8,16 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
-import android.text.method.ScrollingMovementMethod;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -26,12 +25,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 实时显示 V2TXLivePlayerImpl.startLivePlay 的 hook 结果，支持长按选中复制和播放。
+ * 实时显示 hook 结果，每条日志带独立复制按钮，支持长按选中和播放。
  */
 public class MainActivity extends Activity {
 
-    private TextView resultText;
+    private LinearLayout logContainer;
+    private ScrollView scrollView;
     private TextView statusText;
+    private TextView emptyHint;
     private final StringBuilder allResults = new StringBuilder();
     private int recordCount = 0;
     private final List<String> urlList = new ArrayList<>();
@@ -45,32 +46,36 @@ public class MainActivity extends Activity {
     private final int TEXT_PRIMARY = 0xFFE6EDF3;
     private final int TEXT_SECONDARY = 0xFF8B949E;
     private final int BORDER = 0xFF30363D;
+    private final int COPY_BTN_BG = 0xFF1F6FEB;
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
+            String source = intent.getStringExtra("source");
             String time = intent.getStringExtra("time");
             String playUrl = intent.getStringExtra("playUrl");
             String returnValue = intent.getStringExtra("returnValue");
 
+            recordCount++;
             urlList.add(playUrl);
-            labelList.add("#" + (recordCount + 1) + "  " + time);
+            labelList.add("#" + recordCount + "  " + time);
 
-            allResults.append("── #").append(++recordCount).append(" ──\n")
-                    .append("Time : ").append(time).append("\n")
-                    .append("URL  : ").append(playUrl).append("\n")
-                    .append("Ret  : ").append(returnValue).append("\n\n");
+            String logText = "── #" + recordCount + " ──\n"
+                    + "Src  : " + (source != null ? source : "V2TXLive") + "\n"
+                    + "Time : " + time + "\n"
+                    + "URL  : " + playUrl + "\n"
+                    + "Ret  : " + returnValue;
 
-            resultText.setText(allResults.toString().trim());
+            allResults.append(logText).append("\n\n");
+
+            // 添加条目行
+            addLogEntry(playUrl, logText);
+
             statusText.setText("已捕获 " + recordCount + " 条记录");
+            if (emptyHint != null) emptyHint.setVisibility(View.GONE);
 
-            resultText.post(() -> {
-                int lineCount = resultText.getLineCount();
-                if (resultText.getLayout() != null && lineCount > 0) {
-                    int scrollY = resultText.getLayout().getLineTop(lineCount) - resultText.getHeight();
-                    if (scrollY > 0) resultText.scrollTo(0, scrollY);
-                }
-            });
+            // 自动滚动到底部
+            scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
         }
     };
 
@@ -121,6 +126,67 @@ public class MainActivity extends Activity {
         btn.setLayoutParams(lp);
     }
 
+    /** 向日志列表中添加一条记录行 */
+    private void addLogEntry(String url, String logText) {
+        // 整行容器
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.TOP);
+        row.setPadding(dp(10), dp(10), dp(10), dp(10));
+        row.setBackground(roundedBg(0xFF21262D, 8, BORDER));
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowLp.setMargins(0, 0, 0, dp(8));
+        row.setLayoutParams(rowLp);
+
+        // 日志文本
+        TextView tv = new TextView(this);
+        tv.setText(logText);
+        tv.setTextColor(TEXT_PRIMARY);
+        tv.setTextSize(12);
+        tv.setTypeface(Typeface.MONOSPACE);
+        tv.setTextIsSelectable(true);
+        tv.setHighlightColor(0x3358A6FF);
+        LinearLayout.LayoutParams tvLp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        tvLp.setMargins(0, 0, dp(8), 0);
+        tv.setLayoutParams(tvLp);
+        row.addView(tv);
+
+        // 复制按钮
+        LinearLayout btnCol = new LinearLayout(this);
+        btnCol.setOrientation(LinearLayout.VERTICAL);
+        btnCol.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams btnColLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btnColLp.gravity = Gravity.CENTER_VERTICAL;
+        btnCol.setLayoutParams(btnColLp);
+
+        Button copyBtn = new Button(this);
+        copyBtn.setText("复制");
+        copyBtn.setTextColor(0xFFFFFFFF);
+        copyBtn.setTextSize(11);
+        copyBtn.setTypeface(null, Typeface.BOLD);
+        copyBtn.setAllCaps(false);
+        GradientDrawable btnBg = new GradientDrawable();
+        btnBg.setShape(GradientDrawable.RECTANGLE);
+        btnBg.setCornerRadius(dp(6));
+        btnBg.setColor(COPY_BTN_BG);
+        copyBtn.setBackground(btnBg);
+        copyBtn.setPadding(dp(12), dp(6), dp(12), dp(6));
+        copyBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        copyBtn.setOnClickListener(v -> {
+            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newPlainText("live_url", url));
+            Toast.makeText(MainActivity.this, "已复制 URL", Toast.LENGTH_SHORT).show();
+        });
+        btnCol.addView(copyBtn);
+
+        row.addView(btnCol);
+        logContainer.addView(row);
+    }
+
     private int dp(float dp) {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -169,30 +235,29 @@ public class MainActivity extends Activity {
         statusText.setPadding(0, dp(12), 0, dp(12));
         root.addView(statusText);
 
-        // 结果卡片容器
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(roundedBg(BG_CARD, 12, BORDER));
-        card.setPadding(dp(16), dp(16), dp(16), dp(16));
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+        // 日志列表区域
+        scrollView = new ScrollView(this);
+        scrollView.setBackground(roundedBg(BG_CARD, 12, BORDER));
+        scrollView.setPadding(dp(12), dp(12), dp(12), dp(12));
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1);
-        clp.setMargins(0, 0, 0, dp(16));
-        card.setLayoutParams(clp);
+        slp.setMargins(0, 0, 0, dp(16));
+        scrollView.setLayoutParams(slp);
 
-        resultText = new TextView(this);
-        resultText.setTextColor(TEXT_PRIMARY);
-        resultText.setTextSize(12);
-        resultText.setTypeface(Typeface.MONOSPACE);
-        resultText.setPadding(0, dp(4), 0, dp(4));
-        resultText.setMovementMethod(new ScrollingMovementMethod());
-        resultText.setTextIsSelectable(true);        // 关键：允许长按选中复制
-        resultText.setHighlightColor(0x3358A6FF);    // 选中高亮色
-        resultText.setText("暂无数据");
-        resultText.setLayoutParams(new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        card.addView(resultText);
+        logContainer = new LinearLayout(this);
+        logContainer.setOrientation(LinearLayout.VERTICAL);
+        scrollView.addView(logContainer);
 
-        root.addView(card);
+        // 空状态提示
+        emptyHint = new TextView(this);
+        emptyHint.setText("暂无数据");
+        emptyHint.setTextColor(TEXT_SECONDARY);
+        emptyHint.setTextSize(14);
+        emptyHint.setGravity(Gravity.CENTER);
+        emptyHint.setPadding(0, dp(32), 0, dp(32));
+        logContainer.addView(emptyHint);
+
+        root.addView(scrollView);
 
         // 按钮栏
         LinearLayout btnRow = new LinearLayout(this);
@@ -243,7 +308,9 @@ public class MainActivity extends Activity {
             urlList.clear();
             labelList.clear();
             recordCount = 0;
-            resultText.setText("暂无数据");
+            logContainer.removeAllViews();
+            logContainer.addView(emptyHint);
+            emptyHint.setVisibility(View.VISIBLE);
             statusText.setText("等待 hook 触发...");
         });
         btnRow.addView(clearBtn);

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">BYHZ Token</string>
+    <!-- LSPosed 推荐作用域：对哪些应用生效，留空则全局生效 -->
+    <string-array name="xposed_scope" />
+</resources>
