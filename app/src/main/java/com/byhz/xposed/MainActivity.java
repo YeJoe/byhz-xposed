@@ -7,15 +7,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Canvas;
-import android.graphics.ColorFilter;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.PixelFormat;
-import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
@@ -23,7 +15,6 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -33,8 +24,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 实时显示 hook 结果。每条记录以独立卡片展示，卡片右上角带复制 / 播放图标，
- * 点击复制图标直接复制该条 URL，点击播放图标选择播放器播放该 URL；
+ * 实时显示 hook 结果。每条记录以独立卡片展示，卡片右上角带复制 / 播放按钮，
+ * 点击复制按钮直接复制该条 URL，点击播放按钮选择播放器播放该 URL；
  * 卡片上同时标明是哪条 hook 产生的。
  */
 public class MainActivity extends Activity {
@@ -105,88 +96,27 @@ public class MainActivity extends Activity {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    // ---- 图标（Canvas 直接绘制，不依赖矢量解析，保证可见）----
+    // ---- 静态按钮（文字 + 圆角背景，不依赖 Canvas 绘制）----
 
-    /** 复制图标：两张重叠圆角卡片 */
-    private Drawable copyIcon() {
-        return new Drawable() {
-            @Override
-            public void draw(Canvas canvas) {
-                Rect b = getBounds();
-                float s = b.width();
-                Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-                p.setStyle(Paint.Style.FILL);
-
-                float r = s * 0.12f;
-                // 后层（半透明，向右下偏移）
-                p.setColor(ACCENT);
-                p.setAlpha(110);
-                RectF back = new RectF(b.left + s * 0.30f, b.top + s * 0.30f,
-                        b.right - s * 0.06f, b.bottom - s * 0.06f);
-                canvas.drawRoundRect(back, r, r, p);
-                // 前层（实心）
-                p.setAlpha(255);
-                RectF front = new RectF(b.left + s * 0.06f, b.top + s * 0.06f,
-                        b.right - s * 0.30f, b.bottom - s * 0.30f);
-                canvas.drawRoundRect(front, r, r, p);
-            }
-
-            @Override
-            public void setAlpha(int alpha) {}
-
-            @Override
-            public void setColorFilter(ColorFilter cf) {}
-
-            @Override
-            public int getOpacity() {
-                return PixelFormat.TRANSLUCENT;
-            }
-        };
-    }
-
-    /** 播放图标：播放三角 */
-    private Drawable playIcon() {
-        return new Drawable() {
-            @Override
-            public void draw(Canvas canvas) {
-                Rect b = getBounds();
-                float s = b.width();
-                Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
-                p.setColor(ACCENT_GREEN);
-                p.setStyle(Paint.Style.FILL);
-
-                float pad = s * 0.26f;
-                Path path = new Path();
-                path.moveTo(b.left + pad, b.top + pad);
-                path.lineTo(b.right - pad, b.centerY());
-                path.lineTo(b.left + pad, b.bottom - pad);
-                path.close();
-                canvas.drawPath(path, p);
-            }
-
-            @Override
-            public void setAlpha(int alpha) {}
-
-            @Override
-            public void setColorFilter(ColorFilter cf) {}
-
-            @Override
-            public int getOpacity() {
-                return PixelFormat.TRANSLUCENT;
-            }
-        };
-    }
-
-    private ImageView makeIcon(Drawable drawable, String desc, View.OnClickListener onClick) {
-        ImageView iv = new ImageView(this);
-        iv.setImageDrawable(drawable);
-        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        iv.setClickable(true);
-        iv.setFocusable(true);
-        iv.setContentDescription(desc);
-        iv.setBackground(roundedBg(0xFF21262D, 10, BORDER));
-        iv.setOnClickListener(onClick);
-        return iv;
+    private TextView makeButton(String text, int bgColor, View.OnClickListener onClick) {
+        TextView btn = new TextView(this);
+        btn.setText(text);
+        btn.setTextColor(0xFFFFFFFF);
+        btn.setTextSize(13);
+        btn.setTypeface(null, Typeface.BOLD);
+        btn.setGravity(Gravity.CENTER);
+        btn.setClickable(true);
+        btn.setFocusable(true);
+        btn.setBackground(roundedBg(bgColor, 8, 0));
+        btn.setPadding(dp(12), 0, dp(12), 0);
+        btn.setStateListAnimator(null);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, dp(32));
+        lp.setMargins(dp(4), 0, dp(4), 0);
+        lp.gravity = Gravity.CENTER_VERTICAL;
+        btn.setLayoutParams(lp);
+        btn.setOnClickListener(onClick);
+        return btn;
     }
 
     // ---- 布局 ----
@@ -323,11 +253,11 @@ public class MainActivity extends Activity {
         top.addView(tag, new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        ImageView playIv = makeIcon(playIcon(), "播放", v -> playUrl(pos));
-        top.addView(playIv, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        TextView playBtn = makeButton("播放", ACCENT_GREEN, v -> playUrl(pos));
+        top.addView(playBtn);
 
-        ImageView copyIv = makeIcon(copyIcon(), "复制 URL", v -> copyUrl(pos));
-        top.addView(copyIv, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        TextView copyBtn = makeButton("复制", ACCENT, v -> copyUrl(pos));
+        top.addView(copyBtn);
 
         card.addView(top);
 
