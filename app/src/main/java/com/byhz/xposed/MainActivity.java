@@ -7,6 +7,13 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.PixelFormat;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
@@ -22,10 +29,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import org.xmlpull.v1.XmlPullParser;
-import org.xmlpull.v1.XmlPullParserFactory;
-
-import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -102,49 +105,86 @@ public class MainActivity extends Activity {
         return (int) (dp * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    // ---- 图标（程序化生成 VectorDrawable）----
+    // ---- 图标（Canvas 直接绘制，不依赖矢量解析，保证可见）----
 
-    private Drawable vectorIcon(int color, String pathData) {
-        String hex = String.format("%08X", color);
-        String xml = "<vector xmlns:android=\"http://schemas.android.com/apk/res/android\" "
-                + "android:width=\"24dp\" android:height=\"24dp\" "
-                + "android:viewportWidth=\"24\" android:viewportHeight=\"24\">"
-                + "<path android:fillColor=\"#" + hex + "\" android:pathData=\"" + pathData + "\"/>"
-                + "</vector>";
-        try {
-            XmlPullParserFactory factory = XmlPullParserFactory.newInstance();
-            factory.setNamespaceAware(true);
-            XmlPullParser parser = factory.newPullParser();
-            parser.setInput(new StringReader(xml));
-            return Drawable.createFromXml(getResources(), parser);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
+    /** 复制图标：两张重叠圆角卡片 */
     private Drawable copyIcon() {
-        // 两张重叠的卡片，表示「复制」
-        return vectorIcon(ACCENT,
-                "M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11"
-                + "a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z");
+        return new Drawable() {
+            @Override
+            public void draw(Canvas canvas) {
+                Rect b = getBounds();
+                float s = b.width();
+                Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+                p.setStyle(Paint.Style.FILL);
+
+                float r = s * 0.12f;
+                // 后层（半透明，向右下偏移）
+                p.setColor(ACCENT);
+                p.setAlpha(110);
+                RectF back = new RectF(b.left + s * 0.30f, b.top + s * 0.30f,
+                        b.right - s * 0.06f, b.bottom - s * 0.06f);
+                canvas.drawRoundRect(back, r, r, p);
+                // 前层（实心）
+                p.setAlpha(255);
+                RectF front = new RectF(b.left + s * 0.06f, b.top + s * 0.06f,
+                        b.right - s * 0.30f, b.bottom - s * 0.30f);
+                canvas.drawRoundRect(front, r, r, p);
+            }
+
+            @Override
+            public void setAlpha(int alpha) {}
+
+            @Override
+            public void setColorFilter(ColorFilter cf) {}
+
+            @Override
+            public int getOpacity() {
+                return PixelFormat.TRANSLUCENT;
+            }
+        };
     }
 
+    /** 播放图标：播放三角 */
     private Drawable playIcon() {
-        // 播放三角
-        return vectorIcon(ACCENT_GREEN, "M8 5v14l11-7z");
+        return new Drawable() {
+            @Override
+            public void draw(Canvas canvas) {
+                Rect b = getBounds();
+                float s = b.width();
+                Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+                p.setColor(ACCENT_GREEN);
+                p.setStyle(Paint.Style.FILL);
+
+                float pad = s * 0.26f;
+                Path path = new Path();
+                path.moveTo(b.left + pad, b.top + pad);
+                path.lineTo(b.right - pad, b.centerY());
+                path.lineTo(b.left + pad, b.bottom - pad);
+                path.close();
+                canvas.drawPath(path, p);
+            }
+
+            @Override
+            public void setAlpha(int alpha) {}
+
+            @Override
+            public void setColorFilter(ColorFilter cf) {}
+
+            @Override
+            public int getOpacity() {
+                return PixelFormat.TRANSLUCENT;
+            }
+        };
     }
 
     private ImageView makeIcon(Drawable drawable, String desc, View.OnClickListener onClick) {
         ImageView iv = new ImageView(this);
-        if (drawable != null) {
-            iv.setImageDrawable(drawable);
-        }
-        iv.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        iv.setPadding(dp(6), dp(6), dp(6), dp(6));
+        iv.setImageDrawable(drawable);
+        iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
         iv.setClickable(true);
         iv.setFocusable(true);
         iv.setContentDescription(desc);
-        iv.setBackground(roundedBg(0x22000000, 8, 0));
+        iv.setBackground(roundedBg(0xFF21262D, 10, BORDER));
         iv.setOnClickListener(onClick);
         return iv;
     }
